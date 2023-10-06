@@ -718,6 +718,32 @@ static int sd_sec_submit(void *data, u16 spsp, u8 secp, void *buffer,
 			       &exec_args);
 	return ret <= 0 ? ret : -EIO;
 }
+
+static int sd_ata12_submit(void *data, u16 spsp, u8 secp, void *buffer,
+		size_t len, bool send)
+{
+	struct scsi_disk *sdkp = data;
+	struct scsi_device *sdev = sdkp->device;
+	u8 cdb[12] = { 0, };
+	const struct scsi_exec_args exec_args = {
+		.req_flags = BLK_MQ_REQ_PM,
+	};
+	int ret;
+
+	cdb[0] = ATA_12;
+	cdb[1] = (send ? 5 /* ATA_PROTOCOL_PIO_DATA_IN */ : 4 /* ATA_PROTOCOL_PIO_DATA_OUT */) << 1;
+	cdb[2] = 2 /* t_length */ | (1 << 2) /* byt_blok */ | ((send ?  0 : 1) << 3) /* t_dir */;
+	cdb[3] = secp;
+	put_unaligned_le16(len / 512, &cdb[4]);
+	put_unaligned_le16(spsp, &cdb[6]);
+	cdb[9] = send ? 0x5e /* ATA_CMD_TRUSTED_SND */: 0x5c /* ATA_CMD_TRUSTED_RCV */;
+
+	ret = scsi_execute_cmd(sdev, cdb, send ? REQ_OP_DRV_OUT : REQ_OP_DRV_IN,
+			       buffer, len, SD_TIMEOUT, sdkp->max_retries,
+			       &exec_args);
+	return ret <= 0 ? ret : -EIO;
+}
+
 #endif /* CONFIG_BLK_SED_OPAL */
 
 /*
@@ -3736,8 +3762,11 @@ static int sd_probe(struct device *dev)
 		goto out;
 	}
 
-	if (sdkp->security) {
-		sdkp->opal_dev = init_opal_dev(sdkp, &sd_sec_submit);
+	if (sdp->security_supported) {
+		if (sdkp->security)
+		    sdkp->opal_dev = init_opal_dev(sdkp, &sd_sec_submit);
+		else
+		    sdkp->opal_dev = init_opal_dev(sdkp, &sd_ata12_submit);
 		if (sdkp->opal_dev)
 			sd_printk(KERN_NOTICE, sdkp, "supports TCG Opal\n");
 	}
