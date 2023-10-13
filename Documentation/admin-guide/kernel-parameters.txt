@@ -6963,6 +6963,8 @@
 				y = ALWAYS_SYNC (issue a SYNCHRONIZE_CACHE
 					even if the device claims no cache,
 					not on uas)
+				z = IGNORE_OPAL (the device security commands
+					(OPAL) are broken, do not enable them);
 			Example: quirks=0419:aaf5:rl,0421:0433:rc
 
 	user_debug=	[KNL,ARM]
